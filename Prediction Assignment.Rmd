@@ -151,9 +151,6 @@ confusionMatrix(predTest, as.factor(testData$classe))
 ```
 The out-of-sample error of 0.000 or 1%.
 
-
-
-
 Accuracy is very high, and this figure lies within the 95% confidence interval.
 
 2. Final Model
