@@ -1,0 +1,178 @@
+`---
+title: "Prediction Assignment Write up"
+author: "Liphoto"
+date: "03/23/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r library setup}
+
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(corrplot)
+library(rattle)
+library(lattice)
+library(ggplot2)
+library(kernlab)
+library(corrplot)
+library(RColorBrewer)
+library(gbm)
+library(doParallel)
+
+set.seed(1234) # there will be some randomization thus we set a seed
+
+```
+
+
+```{r dataset Preparation}
+
+trainingFilename   <- 'pml-training.csv'
+quizFilename       <- 'pml-testing.csv'
+
+# set the URL for the download
+UrlTrain <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+UrlTest  <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+# download the datasets
+download.file(UrlTrain, trainingFilename)
+download.file(UrlTest,quizFilename)
+
+```
+
+```{r summarise the data}
+
+training <- read.csv(trainingFilename, na.strings=c("NA","","#DIV/0!"))
+testing <- read.csv(quizFilename , na.strings=c("NA", "", "#DIV/0!"))
+
+#str(training)
+#str(testing)
+#summary(training)
+#summary(testing)
+
+
+
+dim(training)
+dim(testing)
+
+```
+# Data Preparations
+1. We see that the data contains some N/A values, we thus do some data wrangling to remove the N/A s.
+
+
+```{r remove N/A s}
+
+#sum(complete.cases(training))
+
+training <- training[, colSums(is.na(training)) == 0] 
+testing <- testing[, colSums(is.na(testing)) == 0]
+
+dim(training)
+#dim(testing)
+
+```
+
+2. Some of the variables are of no consequence [X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp], eliminate them
+```{r}
+Training<-training[,-c(1:7)]
+Testing <-testing[,-c(1:7)]
+dim(Training)
+
+```
+
+3. Data Partitioning
+Because I want to be able to estimate the out-of-sample error, I randomly split the training data into a smaller training set  and a validation set
+
+```{r data partitioning}
+inTrain <- createDataPartition(training$classe, p=0.7, list=FALSE)
+trainingData <- training[inTrain,]
+testData     <- training[-inTrain,]
+
+dim(trainingData)
+dim(testData)
+```
+
+
+# Data Modeling
+1. Create model
+```{r}
+fileName <- "Model.RData"
+
+if (!file.exists(fileName)) {
+
+    # Parallel cores  
+    #require(parallel)
+    library(doParallel)
+    ncores <- makeCluster(detectCores() - 1)
+    registerDoParallel(cores=ncores)
+    getDoParWorkers() # 3
+    
+    # use Random Forest method with Cross Validation, 4 folds
+    myModel <- train(classe ~ .
+                , data = trainingData
+                , method = "rf"
+                , metric = "Accuracy"  # categorical outcome variable so choose accuracy
+                , preProcess=c("center", "scale") # attempt to improve accuracy by normalizing
+                , trControl=trainControl(method = "cv"
+                                        , number = 4 # folds of the training data
+                                        , p= 0.60
+                                        , allowParallel = TRUE 
+#                                       , seeds=NA # don't let workers set seed 
+                                        )
+                )
+
+    save(myModel, file = "Model.RData")
+    # 3:42 .. 3:49 without preProcess
+    # 3:51 .. 3:58 with preProcess
+    stopCluster(ncores)
+} else {
+    # Use cached model  
+    load(file = fileName, verbose = TRUE)
+}
+
+```
+2. Print Model
+```{r}
+print(myModel, digits=4)
+```
+# Predictions
+```{r}
+predTest <- predict(myModel, newdata=testData)
+```
+# Evaluation
+1. Check the accuracy of the model
+```{r}
+confusionMatrix(predTest, as.factor(testData$classe))
+```
+The out-of-sample error of 0.000 or 1%.
+
+
+
+
+Accuracy is very high, and this figure lies within the 95% confidence interval.
+
+2. Final Model
+```{r}
+myModel$finalModel
+```
+```{r}
+varImp(myModel)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
